@@ -1,0 +1,560 @@
+---
+title: "ISYE6414 Project"
+author: "Siying Liu"
+date: "11/26/2022"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+library
+```{r}
+library("tidyr")
+library(caTools)
+library(ggplot2)
+library(dplyr)
+library(MASS)
+library("car")
+library(glmnet)
+```
+
+
+```{r}
+df <- read.csv(file = './Melbourne_housing_FULL.csv')%>%
+  subset(., select = -c(Address, Postcode, Lattitude, Longtitude))%>%
+  drop_na()
+outliers1 <- c(boxplot(df$Price, plot=FALSE)$out)
+outliers2 <- c(boxplot(df$Landsize, plot=FALSE)$out)
+outliers3 <- boxplot(df$YearBuilt, plot=FALSE)$out
+outliers4 <-boxplot(df$BuildingArea, plot=FALSE)$out
+df<- df[-which(df$Price %in% outliers1),]
+df<- df[-which(df$Landsize %in% outliers2),]
+df<- df[-which(df$YearBuilt %in% outliers3),]
+df<- df[-which(df$BuildingArea %in% outliers4),]
+```
+
+```{r}
+ggplot(df, aes(x=Price)) + 
+    geom_histogram(fill="gray26",color="gray26",bins = 50)
+
+ggplot(df, aes(x=Type, y=Price, fill=Type)) + 
+  geom_boxplot(alpha=0.3, show.legend = FALSE) +
+  scale_fill_brewer(palette="Greens")
+
+ggplot(df, aes(x=Method, y=Price, fill=Method)) + 
+  geom_boxplot(alpha=0.3, show.legend = FALSE) +
+  scale_fill_brewer(palette="Blues")
+ticks <- c("N/A", "East Metro", "East Vic", "North Metro","North Vic","SouthEast Metro", "South Metro", "West Metro", "West Vic")
+ggplot(df, aes(x=Regionname, y=Price, fill=Regionname)) + 
+  geom_boxplot(alpha=0.3, show.legend = FALSE) +
+  scale_fill_brewer(palette="Reds")+ scale_x_discrete(labels= ticks) + theme(axis.text.x=element_text(color = "black", size=6, angle=30, vjust=.8, hjust=0.8))
+
+ggplot(df, aes(x=BuildingArea, y=Price)) +
+  geom_point(size=2, shape=23,color="#75B3A4",show.legend = FALSE)
+
+
+ggplot(df, aes(x=Landsize, y=Price)) +
+  geom_point(size=2, shape=23,color="#5A978E",show.legend = FALSE)
+
+ggplot(df, aes(x=Rooms, y=Price)) +
+  geom_point(size=2, shape=23,color="#427C79",show.legend = FALSE)
+
+ggplot(df, aes(x=Bedroom2, y=Price)) +
+  geom_point(size=2, shape=23,color="#2E5D60",show.legend = FALSE)
+
+```
+
+```{r}
+summary(df)
+```
+
+drop all missing NA
+```{r}
+df1 = df %>% drop_na() #after dropping missing value, dataset has 8887 observations
+```
+
+get all cols class
+```{r}
+lapply(df1,class)
+```
+
+
+## model1: 去category
+only keep categorical variables that have limited unique values: Type, Method, Regionname, 
+delete categorical variables that have too many unique values (unique(df1$colname)):Address Suburb,SellerG,CouncilArea, Date,Postcode,
+delete meaningfulless numeric variables in df: Lattitude,Longtitude
+Convert Propertycount,Distance to numeric variable
+```{r}
+df2 = subset(df1, select = -c(Suburb,SellerG,CouncilArea,Date))
+df2$Propertycount = as.numeric(as.character(df2$Propertycount))
+df2$Distance = as.numeric(as.character(df2$Distance))
+summary(df2)
+```
+
+train, test split, (+ validation)
+```{r}
+set.seed(123)
+split1 <- sample.split(df2, SplitRatio = 0.6)
+train <- subset(df2, split1 == "TRUE")
+valid_test <- subset(df2, split1 == "FALSE")
+split2 <- sample.split(valid_test, SplitRatio = 0.2)
+valid <- subset(valid_test, split2 == "TRUE")
+test <- subset(valid_test, split2 == "FALSE")
+
+```
+
+full model - use all variable
+```{r}
+fullmodel = lm(Price ~ ., data = train)
+summary(fullmodel)
+
+# model evaluation
+# r square
+train$Pred <- predict(fullmodel, newdata=train)
+train_r_sq = cor(train$Pred,train$Price)^2
+train_r_sq_adj = 1-(1-train_r_sq)*(nrow(train)-1)/(nrow(train)-fullmodel$rank)
+train_r_sq_adj
+
+valid$Pred <- predict(fullmodel, newdata=valid)
+valid_r_sq = cor(valid$Pred,valid$Price)^2
+valid_r_sq_adj = 1-(1-valid_r_sq)*(nrow(valid)-1)/(nrow(valid)-fullmodel$rank)
+valid_r_sq_adj
+
+test$Pred <- predict(fullmodel, newdata=test)
+test_r_sq = cor(test$Pred,test$Price)^2
+test_r_sq_adj = 1-(1-test_r_sq)*(nrow(test)-1)/(nrow(test)-fullmodel$rank)
+test_r_sq_adj
+
+# mean absolute percentage error
+train_mape = mean(abs((train$Price-train$Pred)/train$Price))
+train_mape
+valid_mape = mean(abs((valid$Price-valid$Pred)/valid$Price))
+valid_mape
+test_mape = mean(abs((test$Price-test$Pred)/test$Price))
+test_mape
+```
+
+
+```{r}
+```
+```
+
+
+```{r}
+
+
+residual
+```{r}
+resids = stdres(fullmodel)
+par(mfrow =c(2,2))
+plot(train[,9],resids,xlab="Landsize",ylab="Residuals")
+abline(0,0,col="red")
+plot(train[,10],resids,xlab="BuildArea",ylab="Residuals")
+abline(0,0,col="red")
+plot(train[,11],resids,xlab="YearBuilt",ylab="Residuals")
+abline(0,0,col="red")
+
+```
+
+
+```{r}
+par(mfrow =c(2,2))
+fits = fullmodel$fitted.values
+plot(fits, resids,xlab = "Fitted Values", ylab = "Residuals" )
+abline(0,0,col = "red")
+qqPlot(resids, ylab = "Residuals", main = "")
+hist(resids, xlab = "Residuals", main = "", col = "orange", breaks = 80)
+```
+
+
+
+## model2: 加features
+```{r}
+library(dplyr)
+library(lubridate)
+library(stringr)
+
+
+# Data Cleaning and some Transformation
+df3 = df1
+df3$Propertycount = as.numeric(as.character(df3$Propertycount))
+df3$Distance = as.numeric(as.character(df3$Distance))
+
+df3 = df3 %>% 
+  mutate(Suburb = word(Suburb, 1))
+# df3 = df3 %>%
+#   mutate(Year_of_Sale = as.character(year(Date)))
+# df3 = df3 %>%
+#   mutate(Month_of_Sale = as.character(month(Date)))
+
+df3$Date_built = as.Date(paste(as.character(df3$YearBuilt), 6, 30, sep = "/"))
+df3$Date_diff <- as.Date(as.character(df3$Date), format="%d/%m/%Y")-
+                  df3$Date_built
+df3$Date_diff  <- as.numeric(df3$Date_diff)
+df3 = subset(df3, select = -c(Date, Date_built,YearBuilt))
+
+df3$Price_Log = log(df3$Price, base = exp(1))
+summary(df3)
+
+
+
+# Train Test Split
+set.seed(123)
+split1 <- sample.split(df3, SplitRatio = 0.6)
+train <- subset(df3, split1 == "TRUE")
+valid_test <- subset(df3, split1 == "FALSE")
+split2 <- sample.split(valid_test, SplitRatio = 0.2)
+valid <- subset(valid_test, split2 == "TRUE")
+test <- subset(valid_test, split2 == "FALSE")
+
+
+
+# Feature Engineering
+df_suburb_encode = train %>%
+  group_by(Suburb) %>%
+  summarise(Suburb_meanencode = mean(Price))
+df_seller_encode = train %>%
+  group_by(SellerG) %>%
+  summarise(SellerG_meanencode = mean(Price))
+df_concil_encode = train %>%
+  group_by(CouncilArea) %>%
+  summarise(CouncilArea_meanencode = mean(Price))
+df_region_encode = train %>%
+  group_by(Regionname) %>%
+  summarise(Regionname_meanencode = mean(Price))
+df_type_encode = train %>%
+  group_by(Type) %>%
+  summarise(Type_meanencode = mean(Price))
+# df_postcode_encode = train %>%
+#   group_by(Postcode) %>%
+#   summarise(Postcode_meanencode = mean(Price))
+
+
+
+# Merge Features
+train = merge(train, df_suburb_encode, by="Suburb")
+train = merge(train, df_seller_encode, by="SellerG")
+train = merge(train, df_concil_encode, by="CouncilArea")
+# train = merge(train, df_postcode_encode, by="Postcode")
+train = subset(train, select = -c(Price_Log, Suburb, SellerG, CouncilArea))
+summary(train)
+
+valid = merge(valid, df_suburb_encode, by="Suburb")
+valid = merge(valid, df_seller_encode, by="SellerG")
+valid = merge(valid, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+valid = subset(valid, select = -c(Price_Log, Suburb, SellerG, CouncilArea))
+
+test = merge(test, df_suburb_encode, by="Suburb")
+test = merge(test, df_seller_encode, by="SellerG")
+test = merge(test, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+test = subset(test, select = -c(Price_Log, Suburb, SellerG, CouncilArea))
+
+
+
+# train model
+fullmodel2 = lm(Price ~ ., data = train)
+summary(fullmodel2)
+fullmodel2$rank
+
+
+
+# model evaluation
+# r square
+train$Pred <- predict(fullmodel2, newdata=train)
+train_r_sq = cor(train$Pred,train$Price)^2
+train_r_sq_adj = 1-(1-train_r_sq)*(nrow(train)-1)/(nrow(train)-fullmodel2$rank)
+train_r_sq_adj
+
+valid$Pred <- predict(fullmodel2, newdata=valid)
+valid_r_sq = cor(valid$Pred,valid$Price)^2
+valid_r_sq_adj = 1-(1-valid_r_sq)*(nrow(valid)-1)/(nrow(valid)-fullmodel2$rank)
+valid_r_sq_adj
+
+test$Pred <- predict(fullmodel2, newdata=test)
+test_r_sq = cor(test$Pred,test$Price)^2
+test_r_sq_adj = 1-(1-test_r_sq)*(nrow(test)-1)/(nrow(test)-fullmodel2$rank)
+test_r_sq_adj
+
+# mean absolute percentage error
+train_mape = mean(abs((train$Price-train$Pred)/train$Price))
+train_mape
+valid_mape = mean(abs((valid$Price-valid$Pred)/valid$Price))
+valid_mape
+test_mape = mean(abs((test$Price-test$Pred)/test$Price))
+test_mape
+
+
+
+# check assumptions
+par(mfrow =c(2,2))
+fits = fullmodel2$fitted.values
+resids = stdres(fullmodel2)
+plot(fits, resids,xlab = "Fitted Values", ylab = "Residuals" )
+abline(0,0,col = "red")
+qqPlot(resids, ylab = "Residuals", main = "")
+hist(resids, xlab = "Residuals", main = "", col = "orange", breaks = 80)
+```
+
+
+## correlation analysis
+```{r}
+getwd()
+
+num_cols <- unlist(lapply(df3, is.numeric))
+df_num <- df3[ ,num_cols]
+df_num <- df_num[,c(2,1,3:(ncol(df_num)-1))]
+plot(df_num[ ,1:4])
+plot(df_num[ ,c(1,5:7)])
+plot(df_num[ ,c(1,8:(ncol(df_num)-1))])
+
+library(rstatix)
+library(corrplot)
+cor_test <- cor_mat(df_num) #to create the correlation matrix
+cor_test
+
+corrplot(cor(df_num), tl.col = 'black')
+```
+
+
+## model3: 加features + logy
+```{r}
+# Train Test Split
+set.seed(123)
+split1 <- sample.split(df3, SplitRatio = 0.6)
+train <- subset(df3, split1 == "TRUE")
+valid_test <- subset(df3, split1 == "FALSE")
+split2 <- sample.split(valid_test, SplitRatio = 0.2)
+valid <- subset(valid_test, split2 == "TRUE")
+test <- subset(valid_test, split2 == "FALSE")
+
+
+
+# Feature Engineering
+df_suburb_encode = train %>%
+  group_by(Suburb) %>%
+  summarise(Suburb_meanencode = mean(Price))
+df_seller_encode = train %>%
+  group_by(SellerG) %>%
+  summarise(SellerG_meanencode = mean(Price))
+df_concil_encode = train %>%
+  group_by(CouncilArea) %>%
+  summarise(CouncilArea_meanencode = mean(Price))
+df_region_encode = train %>%
+  group_by(Regionname) %>%
+  summarise(Regionname_meanencode = mean(Price))
+df_type_encode = train %>%
+  group_by(Type) %>%
+  summarise(Type_meanencode = mean(Price))
+# df_postcode_encode = train %>%
+#   group_by(Postcode) %>%
+#   summarise(Postcode_meanencode = mean(Price))
+
+
+
+# Merge Features
+train = merge(train, df_suburb_encode, by="Suburb")
+train = merge(train, df_seller_encode, by="SellerG")
+train = merge(train, df_concil_encode, by="CouncilArea")
+# train = merge(train, df_postcode_encode, by="Postcode")
+train = subset(train, select = -c(Price, Suburb, SellerG, CouncilArea))
+summary(train)
+
+valid = merge(valid, df_suburb_encode, by="Suburb")
+valid = merge(valid, df_seller_encode, by="SellerG")
+valid = merge(valid, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+valid = subset(valid, select = -c(Price, Suburb, SellerG, CouncilArea))
+
+test = merge(test, df_suburb_encode, by="Suburb")
+test = merge(test, df_seller_encode, by="SellerG")
+test = merge(test, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+test = subset(test, select = -c(Price, Suburb, SellerG, CouncilArea))
+
+
+
+# train model
+fullmodel3 = lm(Price_Log ~ ., data = train)
+summary(fullmodel3)
+fullmodel3$rank
+
+
+
+# model evaluation
+# r square
+train$Pred <- predict(fullmodel3, newdata=train)
+train_r_sq = cor(exp(train$Pred),exp(train$Price_Log))^2
+train_r_sq_adj = 1-(1-train_r_sq)*(nrow(train)-1)/(nrow(train)-fullmodel3$rank)
+train_r_sq_adj
+
+valid$Pred <- predict(fullmodel3, newdata=valid)
+valid_r_sq = cor(exp(valid$Pred),exp(valid$Price_Log))^2
+valid_r_sq_adj = 1-(1-valid_r_sq)*(nrow(valid)-1)/(nrow(valid)-fullmodel3$rank)
+valid_r_sq_adj
+
+test$Pred <- predict(fullmodel3, newdata=test)
+test_r_sq = cor(exp(test$Pred),exp(test$Price_Log))^2
+test_r_sq_adj = 1-(1-test_r_sq)*(nrow(test)-1)/(nrow(test)-fullmodel3$rank)
+test_r_sq_adj
+
+# mean absolute percentage error
+train_mape = mean(abs((exp(train$Price_Log)-exp(train$Pred))/exp(train$Price_Log)))
+train_mape
+valid_mape = mean(abs((exp(valid$Price_Log)-exp(valid$Pred))/exp(valid$Price_Log)))
+valid_mape
+test_mape = mean(abs((exp(test$Price_Log)-exp(test$Pred))/exp(test$Price_Log)))
+test_mape
+
+
+
+# check assumptions
+par(mfrow =c(2,2))
+fits = fullmodel3$fitted.values
+resids = stdres(fullmodel3)
+plot(fits, resids,xlab = "Fitted Values", ylab = "Residuals" )
+abline(0,0,col = "red")
+qqPlot(resids, ylab = "Residuals", main = "")
+hist(resids, xlab = "Residuals", main = "", col = "orange", breaks = 80)
+```
+
+
+## model4: 加features + logy，再Lasso regression
+```{r}
+# Train Test Split
+set.seed(123)
+split1 <- sample.split(df3, SplitRatio = 0.6)
+train <- subset(df3, split1 == "TRUE")
+valid_test <- subset(df3, split1 == "FALSE")
+split2 <- sample.split(valid_test, SplitRatio = 0.2)
+valid <- subset(valid_test, split2 == "TRUE")
+test <- subset(valid_test, split2 == "FALSE")
+
+
+
+# Feature Engineering
+df_suburb_encode = train %>%
+  group_by(Suburb) %>%
+  summarise(Suburb_meanencode = mean(Price))
+df_seller_encode = train %>%
+  group_by(SellerG) %>%
+  summarise(SellerG_meanencode = mean(Price))
+df_concil_encode = train %>%
+  group_by(CouncilArea) %>%
+  summarise(CouncilArea_meanencode = mean(Price))
+df_region_encode = train %>%
+  group_by(Regionname) %>%
+  summarise(Regionname_meanencode = mean(Price))
+df_type_encode = train %>%
+  group_by(Type) %>%
+  summarise(Type_meanencode = mean(Price))
+# df_postcode_encode = train %>%
+#   group_by(Postcode) %>%
+#   summarise(Postcode_meanencode = mean(Price))
+
+
+
+# Merge Features
+train = merge(train, df_suburb_encode, by="Suburb")
+train = merge(train, df_seller_encode, by="SellerG")
+train = merge(train, df_concil_encode, by="CouncilArea")
+# train = merge(train, df_postcode_encode, by="Postcode")
+train = subset(train, select = -c(Price, Suburb, SellerG, CouncilArea))
+summary(train)
+
+valid = merge(valid, df_suburb_encode, by="Suburb")
+valid = merge(valid, df_seller_encode, by="SellerG")
+valid = merge(valid, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+valid = subset(valid, select = -c(Price, Suburb, SellerG, CouncilArea))
+
+test = merge(test, df_suburb_encode, by="Suburb")
+test = merge(test, df_seller_encode, by="SellerG")
+test = merge(test, df_concil_encode, by="CouncilArea")
+# test = merge(test, df_postcode_encode, by="Postcode")
+test = subset(test, select = -c(Price, Suburb, SellerG, CouncilArea))
+
+
+
+# train model
+y <- train$Price_Log
+x <- data.matrix(train[,-which(names(train) %in% c("Price_Log"))])
+#perform k-fold cross-validation to find optimal lambda value
+#lambdas <- 10^seq(2, -3, by = -.1)
+#cv_model <- cv.glmnet(x, y, alpha = 1,lambda = lambdas, standardize = TRUE, nfolds = 5)
+cv_model <- cv.glmnet(x, y, alpha = 1,standardize = TRUE)
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+plot(cv_model) 
+
+#best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda, standardize = TRUE)
+
+best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda, standardize = TRUE)
+coef(best_model)
+#use variables chosen by LASSO Regression
+#train = train[,c('Price_Log',best_model[["beta"]]@Dimnames[[1]])]
+train = subset(train, select = -c(Method, Propertycount))
+fullmodel4 = lm(Price_Log ~., data = train)
+summary(fullmodel4)
+fullmodel4$rank
+
+
+
+# model evaluation
+# r square
+train$Pred <- predict(fullmodel4, newdata=train)
+train_r_sq = cor(exp(train$Pred),exp(train$Price_Log))^2
+train_r_sq_adj = 1-(1-train_r_sq)*(nrow(train)-1)/(nrow(train)-fullmodel3$rank)
+train_r_sq_adj
+
+valid$Pred <- predict(fullmodel4, newdata=valid)
+valid_r_sq = cor(exp(valid$Pred),exp(valid$Price_Log))^2
+valid_r_sq_adj = 1-(1-valid_r_sq)*(nrow(valid)-1)/(nrow(valid)-fullmodel3$rank)
+valid_r_sq_adj
+
+test$Pred <- predict(fullmodel4, newdata=test)
+test_r_sq = cor(exp(test$Pred),exp(test$Price_Log))^2
+test_r_sq_adj = 1-(1-test_r_sq)*(nrow(test)-1)/(nrow(test)-fullmodel3$rank)
+test_r_sq_adj
+
+# mean absolute percentage error
+train_mape = mean(abs((exp(train$Price_Log)-exp(train$Pred))/exp(train$Price_Log)))
+train_mape
+valid_mape = mean(abs((exp(valid$Price_Log)-exp(valid$Pred))/exp(valid$Price_Log)))
+valid_mape
+test_mape = mean(abs((exp(test$Price_Log)-exp(test$Pred))/exp(test$Price_Log)))
+test_mape
+
+
+
+# check assumptions
+par(mfrow =c(2,2))
+fits = fullmodel4$fitted.values
+resids = stdres(fullmodel4)
+plot(fits, resids,xlab = "Fitted Values", ylab = "Residuals" )
+abline(0,0,col = "red")
+qqPlot(resids, ylab = "Residuals", main = "")
+hist(resids, xlab = "Residuals", main = "", col = "orange", breaks = 80)
+```
+```{r}
+library(AICcmodavg)
+
+#define list of models
+models <- list( fullmodel4, fullmodel2,fullmodel3)
+
+#specify model names
+mod.names <- c('disp.hp.wt.qsec', 'disp.qsec', 'disp.wt')
+
+#calculate AIC of each model
+aictab(cand.set = models, modnames = mod.names)
+
+```
+```{r}
+AIC(fullmodel4)
+```
+
